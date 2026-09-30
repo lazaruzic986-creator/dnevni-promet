@@ -1,0 +1,11 @@
+node_modules/
+.data/
+.vercel/
+dist/
+preview-dist/
+artifacts/
+screenshots/
+attachments/
+.env
+.env.*
+*.log
