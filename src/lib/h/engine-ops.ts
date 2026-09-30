@@ -35,6 +35,13 @@ export async function saveProduct(
   if (input.consumeMode === "zaliha" && !input.outputArticleId) {
     throw new Error("Priprema unapred mora imati artikal zalihe (porcije ili poluproizvod).");
   }
+  if (input.outputArticleId) {
+    const outputArticle = await sql.query<{ id: string }>(
+      `select id from articles where id=$1 and org_id=$2`,
+      [input.outputArticleId, actor.orgId],
+    );
+    if (!outputArticle[0]) throw new Error("Artikal izlaza ne postoji u ovoj firmi.");
+  }
   if (input.id) {
     await sql.query(
       `update products set name=$1, code=$2, group_name=$3, size_label=$4, sell_price=$5, sale_unit=$6, consume_mode=$7, output_article_id=$8, pos_code=$9
@@ -103,6 +110,13 @@ export async function saveRecipe(
 ): Promise<string> {
   const product = await sql.query(`select id from products where id=$1 and org_id=$2`, [input.productId, actor.orgId]);
   if (!product[0]) throw new Error("Proizvod ne postoji");
+  for (const line of input.lines) {
+    const article = await sql.query<{ id: string }>(
+      `select id from articles where id=$1 and org_id=$2`,
+      [line.articleId, actor.orgId],
+    );
+    if (!article[0]) throw new Error("Sastojak recepture ne postoji u ovoj firmi.");
+  }
   const versionId = newId();
   const from = input.validFrom ? new Date(input.validFrom).toISOString() : new Date().toISOString();
   await sql.query(
@@ -841,9 +855,13 @@ export async function postCount(sql: Sql, actor: Actor, countId: string): Promis
   await assertPeriod(sql, actor.orgId, header[0].business_date, actor.role, null);
   const when = await stamp(sql, actor.orgId, null);
   const lines = await sql.query<{ article_id: string; expected_qty: string; counted_qty: string | null }>(
-    `select article_id, expected_qty::text, counted_qty::text from count_lines where count_id=$1 and counted_qty is not null`,
+    `select article_id, expected_qty::text, counted_qty::text from count_lines where count_id=$1`,
     [countId],
   );
+  const missing = lines.filter((line) => line.counted_qty == null).length;
+  if (missing > 0) {
+    throw new Error(`Popis nije potpun: unesite količinu za svih ${missing} preostalih stavki pre knjiženja.`);
+  }
   for (const line of lines) {
     const diff = q(line.counted_qty!) - q(line.expected_qty);
     let value: string | null = null;
