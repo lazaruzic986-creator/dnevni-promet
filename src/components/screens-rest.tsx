@@ -447,33 +447,60 @@ export function CountPage() {
   const [countId, setCount] = useState("");
   const lines = useRead<{ lines: { article_id: string; name: string; base_unit: string; expected_qty: string; counted_qty: string | null; diff_qty: string | null; value: string | null }[] }>(countId ? "count" : "counts", countId ? { id: countId } : undefined);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState<Record<string, boolean>>({});
+  const items = (lines.data as { lines?: { article_id: string; name: string; base_unit: string; expected_qty: string; counted_qty: string | null; diff_qty: string | null; value: string | null }[] })?.lines ?? [];
+  const readyToPost = items.length > 0 && items.every((line) => {
+    const value = draft[line.article_id] ?? line.counted_qty ?? "";
+    return value !== "" && (draft[line.article_id] === undefined || draft[line.article_id] === line.counted_qty || saved[line.article_id] === true);
+  });
   return (
     <GateNote boot={boot.data} perm="popis">
       <div className="space-y-4">
         <h1 className="text-3xl">Popis</h1>
-        <p className="text-sm text-muted">Očekivano stanje je zamrznuto u trenutku početka. Prodaja posle toga ne menja osnovu poređenja. Razlika se ne knjiži i kao rashod.</p>
+        <p className="text-sm text-muted">Očekivano stanje je presek na početku popisa. Izbroj artikle redom i odmah sačuvaj svaku stavku. Promene zalihe pre njenog čuvanja ulaze u osnovu poređenja; prodaje i rashodi posle čuvanja ostaju uračunati u završnu zalihu.</p>
         {!countId && <button className="btn btn-primary" type="button" onClick={async () => {
           try { const res = await commit("startCount", { scope: "sve", idempotencyKey: crypto.randomUUID() }) as { id: string }; setCount(res.id); refresh(); }
           catch (error) { err(error); }
         }}>Započni popis svega</button>}
         {countId && (
           <div className="space-y-2">
-            {((lines.data as { lines?: { article_id: string; name: string; base_unit: string; expected_qty: string }[] })?.lines ?? []).map((l) => (
-              <div key={l.article_id} className="card grid gap-2 sm:grid-cols-[1fr_8rem]">
-                <p>{l.name}<br /><span className="text-sm text-muted">očekivano {l.expected_qty} {l.base_unit}</span></p>
-                <input className="min-h-11 rounded-xl border border-line px-2" placeholder="Prebrojano" value={draft[l.article_id] ?? ""} onChange={(e) => setDraft({ ...draft, [l.article_id]: e.target.value })} />
-              </div>
-            ))}
-            <button className="btn btn-primary" type="button" onClick={async () => {
+            {items.map((line) => {
+              const value = draft[line.article_id] ?? line.counted_qty ?? "";
+              const isSaved = saved[line.article_id] === true || (draft[line.article_id] === undefined && line.counted_qty !== null);
+              return (
+                <div key={line.article_id} className="card grid gap-2 sm:grid-cols-[1fr_8rem_auto]">
+                  <p>{line.name}<br /><span className="text-sm text-muted">presek na početku: {line.expected_qty} {line.base_unit}{line.counted_qty !== null ? <><br />sačuvano kao prebrojano: {line.counted_qty} {line.base_unit}</> : null}</span></p>
+                  <input
+                    className="min-h-11 rounded-xl border border-line px-2"
+                    type="number"
+                    min="0"
+                    step="any"
+                    placeholder="Prebrojano"
+                    aria-label={`Prebrojana količina: ${line.name}`}
+                    value={value}
+                    onChange={(event) => {
+                      setDraft({ ...draft, [line.article_id]: event.target.value });
+                      setSaved({ ...saved, [line.article_id]: false });
+                    }}
+                  />
+                  <button className="btn" type="button" disabled={value.trim() === "" || isSaved} onClick={async () => {
+                    try {
+                      await commit("setCountQty", { countId, articleId: line.article_id, counted: value, idempotencyKey: crypto.randomUUID() });
+                      setSaved({ ...saved, [line.article_id]: true });
+                      toast.success(`Sačuvano: ${line.name}`);
+                      refresh();
+                    } catch (error) { err(error); }
+                  }}>{isSaved ? "Sačuvano" : "Sačuvaj stavku"}</button>
+                </div>
+              );
+            })}
+            <button className="btn btn-primary" type="button" disabled={!readyToPost} onClick={async () => {
               try {
-                for (const [articleId, counted] of Object.entries(draft)) {
-                  if (counted === "") continue;
-                  await commit("setCountQty", { countId, articleId, counted, idempotencyKey: `cnt-${countId}-${articleId}` });
-                }
                 await commit("postCount", { countId, idempotencyKey: `post-${countId}` });
                 toast.success("Popis je proknjižen"); refresh();
               } catch (error) { err(error); }
             }}>Knjiži razlike</button>
+            {!readyToPost && <p className="text-sm text-muted">Pre knjiženja sačuvaj prebrojanu količinu za svaku stavku.</p>}
           </div>
         )}
       </div>
