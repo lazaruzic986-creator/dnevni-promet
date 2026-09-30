@@ -197,7 +197,13 @@ export async function runProof(sql: Sql): Promise<Check[]> {
     `select expected_qty::text from count_lines where count_id=$1 and article_id=$2`,
     [countId, cheese],
   );
-  await setCountQty(sql, actor, countId, cheese, "3600");
+  const countItems = await sql.query<{ article_id: string; expected_qty: string }>(
+    `select article_id, expected_qty::text from count_lines where count_id=$1`,
+    [countId],
+  );
+  for (const item of countItems) {
+    await setCountQty(sql, actor, countId, item.article_id, item.article_id === cheese ? "3600" : item.expected_qty);
+  }
   await postCount(sql, actor, countId);
   const countLine = await sql.query<{ diff_qty: string; value: string }>(
     `select diff_qty::text, value::text from count_lines where count_id=$1 and article_id=$2`,
