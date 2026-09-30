@@ -908,6 +908,8 @@ export async function postCount(sql: Sql, actor: Actor, countId: string): Promis
       [line.article_id, actor.orgId],
     );
     if (!current[0]) throw new Error("Artikal iz popisa ne postoji u ovoj firmi.");
+    const postingClock = await sql.query<{ at: string }>(`select clock_timestamp()::text as at`);
+    const postedAt = postingClock[0]?.at ?? when.at;
     const movements = await sql.query<{ during_count: string; after_count: string }>(
       `select
          coalesce(sum(qty) filter (
@@ -917,7 +919,7 @@ export async function postCount(sql: Sql, actor: Actor, countId: string): Promis
            where occurred_at > $3::timestamptz and occurred_at <= $4::timestamptz
          ), 0)::text as after_count
        from stock_moves where article_id=$1`,
-      [line.article_id, header[0].started_at, line.counted_at, when.at],
+      [line.article_id, header[0].started_at, line.counted_at, postedAt],
     );
     const expectedAtCount = q(line.expected_qty) + q(movements[0]?.during_count ?? "0");
     const diff = q(line.counted_qty!) - expectedAtCount;
@@ -935,7 +937,7 @@ export async function postCount(sql: Sql, actor: Actor, countId: string): Promis
         refType: "popis",
         refId: countId,
         businessDate: header[0].business_date,
-        occurredAt: when.at,
+        occurredAt: postedAt,
         shiftId: null,
         userId: actor.userId,
         note: "Popisna razlika prilagođena kretanjima posle brojanja",
