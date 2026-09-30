@@ -42,24 +42,42 @@ export async function saveProduct(
     );
     if (!outputArticle[0]) throw new Error("Artikal izlaza ne postoji u ovoj firmi.");
   }
+  const after = {
+    name: input.name.trim(),
+    code: input.code ?? null,
+    groupName: input.groupName ?? null,
+    sizeLabel: input.sizeLabel ?? null,
+    sellPrice: mStr(m(input.sellPrice)),
+    saleUnit: input.saleUnit,
+    consumeMode: input.consumeMode,
+    outputArticleId: input.outputArticleId ?? null,
+    posCode: input.posCode ?? null,
+  };
   if (input.id) {
+    const existing = await sql.query<Record<string, unknown>>(
+      `select code, name, group_name, size_label, sell_price::text, sale_unit, consume_mode, output_article_id, pos_code
+       from products where id=$1 and org_id=$2`,
+      [input.id, actor.orgId],
+    );
+    if (!existing[0]) throw new Error("Proizvod ne postoji u ovoj firmi.");
     await sql.query(
       `update products set name=$1, code=$2, group_name=$3, size_label=$4, sell_price=$5, sale_unit=$6, consume_mode=$7, output_article_id=$8, pos_code=$9
        where id=$10 and org_id=$11`,
       [
-        input.name.trim(),
-        input.code ?? null,
-        input.groupName ?? null,
-        input.sizeLabel ?? null,
-        mStr(m(input.sellPrice)),
-        input.saleUnit,
-        input.consumeMode,
-        input.outputArticleId ?? null,
-        input.posCode ?? null,
+        after.name,
+        after.code,
+        after.groupName,
+        after.sizeLabel,
+        after.sellPrice,
+        after.saleUnit,
+        after.consumeMode,
+        after.outputArticleId,
+        after.posCode,
         input.id,
         actor.orgId,
       ],
     );
+    await audit(sql, actor.orgId, actor.userId, "izmena", "proizvod", input.id, null, existing[0], after);
     if (input.posCode) {
       await sql.query(
         `insert into pos_map (id, org_id, pos_code, product_id) values ($1,$2,$3,$4)
@@ -95,6 +113,7 @@ export async function saveProduct(
       [newId(), actor.orgId, input.posCode, id],
     );
   }
+  await audit(sql, actor.orgId, actor.userId, "unos", "proizvod", id, null, null, after);
   return id;
 }
 
@@ -139,9 +158,17 @@ export async function saveRecipe(
       ],
     );
   }
-  await audit(sql, actor.orgId, actor.userId, "receptura", "proizvod", input.productId, null, null, {
+  await audit(sql, actor.orgId, actor.userId, "receptura", "proizvod", input.productId, input.note ?? null, null, {
     versionId,
     from,
+    lines: input.lines.map((line) => ({
+      articleId: line.articleId,
+      qty: line.qty,
+      unit: line.unit,
+      role: line.role,
+      addonCode: line.addonCode ?? null,
+      yieldRatio: line.yieldRatio ?? null,
+    })),
   });
   return versionId;
 }
