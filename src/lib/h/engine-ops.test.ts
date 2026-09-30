@@ -74,6 +74,21 @@ test("saveProduct rejects an output article owned by another organization", asyn
   assert.equal(calls.some((text) => text.startsWith("update products")), false);
 });
 
+test("saveProduct records a creation in the audit log", async () => {
+  const calls: string[] = [];
+  const sql = sqlMock(() => [], calls);
+
+  const id = await saveProduct(sql, actor, {
+    name: "Burger",
+    sellPrice: "500",
+    saleUnit: "kom",
+    consumeMode: "recept",
+  });
+
+  assert.ok(id);
+  assert.equal(calls.some((text) => text.includes("insert into audit_log")), true);
+});
+
 test("saveRecipe rejects an ingredient owned by another organization", async () => {
   const calls: string[] = [];
   const sql = sqlMock((text) => {
