@@ -445,10 +445,18 @@ export function CountPage() {
   const boot = useBoot();
   const refresh = useRefresh();
   const [countId, setCount] = useState("");
-  const lines = useRead<{ lines: { article_id: string; name: string; base_unit: string; expected_qty: string; counted_qty: string | null; diff_qty: string | null; value: string | null }[] }>(countId ? "count" : "counts", countId ? { id: countId } : undefined);
+  const lines = useRead<{
+    lines: { article_id: string; name: string; base_unit: string; expected_qty: string; counted_qty: string | null; diff_qty: string | null; value: string | null }[];
+    counts: { id: string; status: string; scope: string; business_date: string; started_at: string; note: string | null }[];
+  }>(countId ? "count" : "counts", countId ? { id: countId } : undefined);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});
-  const items = (lines.data as { lines?: { article_id: string; name: string; base_unit: string; expected_qty: string; counted_qty: string | null; diff_qty: string | null; value: string | null }[] })?.lines ?? [];
+  const data = lines.data as {
+    lines?: { article_id: string; name: string; base_unit: string; expected_qty: string; counted_qty: string | null; diff_qty: string | null; value: string | null }[];
+    counts?: { id: string; status: string; scope: string; business_date: string; started_at: string; note: string | null }[];
+  } | undefined;
+  const items = data?.lines ?? [];
+  const drafts = countId ? [] : (data?.counts ?? []).filter((count) => count.status === "nacrt");
   const readyToPost = items.length > 0 && items.every((line) => {
     const value = draft[line.article_id] ?? line.counted_qty ?? "";
     return value !== "" && (draft[line.article_id] === undefined || draft[line.article_id] === line.counted_qty || saved[line.article_id] === true);
@@ -458,7 +466,14 @@ export function CountPage() {
       <div className="space-y-4">
         <h1 className="text-3xl">Popis</h1>
         <p className="text-sm text-muted">Očekivano stanje je presek na početku popisa. Izbroj artikle redom i odmah sačuvaj svaku stavku. Promene zalihe pre njenog čuvanja ulaze u osnovu poređenja; prodaje i rashodi posle čuvanja ostaju uračunati u završnu zalihu.</p>
-        {!countId && <button className="btn btn-primary" type="button" onClick={async () => {
+        {!countId && drafts.length > 0 && <section className="card space-y-2">
+          <h2 className="text-xl">Nedovršen popis</h2>
+          {drafts.map((count) => <div key={count.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-line py-2">
+            <p>Popis za {count.business_date} · {count.scope === "sve" ? "svi artikli" : "izabrani artikli"}</p>
+            <button className="btn btn-primary" type="button" onClick={() => { setDraft({}); setSaved({}); setCount(count.id); }}>Nastavi popis</button>
+          </div>)}
+        </section>}
+        {!countId && drafts.length === 0 && <button className="btn btn-primary" type="button" onClick={async () => {
           try { const res = await commit("startCount", { scope: "sve", idempotencyKey: crypto.randomUUID() }) as { id: string }; setCount(res.id); refresh(); }
           catch (error) { err(error); }
         }}>Započni popis svega</button>}
@@ -497,7 +512,7 @@ export function CountPage() {
             <button className="btn btn-primary" type="button" disabled={!readyToPost} onClick={async () => {
               try {
                 await commit("postCount", { countId, idempotencyKey: `post-${countId}` });
-                toast.success("Popis je proknjižen"); refresh();
+                toast.success("Popis je proknjižen"); setCount(""); setDraft({}); setSaved({}); refresh();
               } catch (error) { err(error); }
             }}>Knjiži razlike</button>
             {!readyToPost && <p className="text-sm text-muted">Pre knjiženja sačuvaj prebrojanu količinu za svaku stavku.</p>}
