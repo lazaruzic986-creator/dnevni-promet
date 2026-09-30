@@ -28,7 +28,7 @@ test("postCount refuses to post while any counted item is missing", async () => 
   const calls: string[] = [];
   const sql = sqlMock((text) => {
     if (text.includes("from counts where id=$1")) {
-      return [{ status: "nacrt", business_date: "2026-09-30" }];
+      return [{ status: "nacrt", business_date: "2026-09-30", started_at: "2026-09-30T08:00:00.000Z" }];
     }
     if (text.includes("from orgs where id = $1")) {
       return [{
@@ -41,8 +41,8 @@ test("postCount refuses to post while any counted item is missing", async () => 
     }
     if (text.includes("from count_lines where count_id=$1")) {
       return [
-        { article_id: "article-1", expected_qty: "5", counted_qty: "5" },
-        { article_id: "article-2", expected_qty: "2", counted_qty: null },
+        { article_id: "article-1", expected_qty: "5", counted_qty: "5", counted_at: "2026-09-30T09:00:00.000Z" },
+        { article_id: "article-2", expected_qty: "2", counted_qty: null, counted_at: null },
       ];
     }
     return [];
