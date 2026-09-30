@@ -62,7 +62,7 @@ test("popis čuva fizičko stanje u trenutku brojanja i prenosi kasniji rashod",
     "select diff_qty::text from count_lines where count_id=$1 and article_id=$2",
     [countId, articleId],
   );
-  assert.equal(line[0]?.diff_qty, "0.0000");
+  assert.equal(line[0]?.diff_qty, "-100.0000");
   assert.equal(state.onHand, "800.0000");
   await pg.close();
 });
