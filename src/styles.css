@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #f3eee4;
+  --color-ink: #1c1915;
+  --color-muted: #6f675e;
+  --color-forest: #1b4332;
+  --color-moss: #2d6a4f;
+  --color-copper: #9a3412;
+  --color-card: #fffdf8;
+  --color-line: #e4dccf;
+  --color-bad: #8f2d3c;
+  --color-ok: #3f6212;
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+  --radius-lg: 1rem;
+}
+
+@layer base {
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+  }
+  h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; }
+  button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
+  input, select, textarea { font: inherit; color: inherit; }
+}
+
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0 1rem;
+    border-radius: 0.8rem;
+    border: 1px solid transparent;
+    font-weight: 600;
+    background: var(--color-card);
+    color: var(--color-ink);
+    border-color: var(--color-line);
+  }
+  .btn:disabled { opacity: 0.5; }
+  .btn-primary { background: var(--color-forest); color: var(--color-paper); border-color: var(--color-forest); }
+  .btn-copper { background: var(--color-copper); color: var(--color-paper); border-color: var(--color-copper); }
+  .btn-ghost { background: transparent; }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.92rem;
+  }
+  .field span { color: var(--color-muted); font-weight: 500; }
+  .field input, .field select, .field textarea {
+    min-height: 2.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-line);
+    background: var(--color-card);
+    padding: 0 0.75rem;
+  }
+  .card {
+    background: var(--color-card);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+}
+
+@media print {
+  nav, .no-print { display: none !important; }
+  body { background: white; }
+}
