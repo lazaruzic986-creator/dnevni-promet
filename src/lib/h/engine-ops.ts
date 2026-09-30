@@ -860,44 +860,76 @@ export async function startCount(
 }
 
 export async function setCountQty(sql: Sql, actor: Actor, countId: string, articleId: string, counted: string): Promise<void> {
-  const row = await sql.query(
-    `select c.id from counts c where c.id=$1 and c.org_id=$2 and c.status='nacrt'`,
+  const qty = q(counted);
+  if (qty < 0n) throw new Error("Prebrojana količina ne može biti negativna.");
+  const count = await sql.query<{ status: string }>(
+    `select status from counts where id=$1 and org_id=$2 for update`,
     [countId, actor.orgId],
   );
-  if (!row[0]) throw new Error("Popis nije otvoren.");
-  await sql.query(`update count_lines set counted_qty=$1 where count_id=$2 and article_id=$3`, [
-    qStr(q(counted)),
-    countId,
-    articleId,
-  ]);
+  if (!count[0] || count[0].status !== "nacrt") throw new Error("Popis nije otvoren.");
+  const article = await sql.query(
+    `select id from articles where id=$1 and org_id=$2 for update`,
+    [articleId, actor.orgId],
+  );
+  if (!article[0]) throw new Error("Artikal ne postoji u ovoj firmi.");
+  const updated = await sql.query(
+    `update count_lines set counted_qty=$1, counted_at=now() where count_id=$2 and article_id=$3 returning id`,
+    [qStr(qty), countId, articleId],
+  );
+  if (!updated[0]) throw new Error("Artikal nije deo ovog popisa.");
 }
 
 export async function postCount(sql: Sql, actor: Actor, countId: string): Promise<{ lines: number }> {
-  const header = await sql.query<{ status: string; business_date: string }>(
-    `select status, business_date::text from counts where id=$1 and org_id=$2 for update`,
+  const header = await sql.query<{ status: string; business_date: string; started_at: string }>(
+    `select status, business_date::text, started_at::text from counts where id=$1 and org_id=$2 for update`,
     [countId, actor.orgId],
   );
   if (!header[0]) throw new Error("Popis ne postoji");
   if (header[0].status === "proknjizen") return { lines: 0 };
   await assertPeriod(sql, actor.orgId, header[0].business_date, actor.role, null);
   const when = await stamp(sql, actor.orgId, null);
-  const lines = await sql.query<{ article_id: string; expected_qty: string; counted_qty: string | null }>(
-    `select article_id, expected_qty::text, counted_qty::text from count_lines where count_id=$1`,
+  const lines = await sql.query<{
+    article_id: string;
+    expected_qty: string;
+    counted_qty: string | null;
+    counted_at: string | null;
+  }>(
+    `select article_id, expected_qty::text, counted_qty::text, counted_at::text
+     from count_lines where count_id=$1 order by article_id`,
     [countId],
   );
-  const missing = lines.filter((line) => line.counted_qty == null).length;
+  const missing = lines.filter((line) => line.counted_qty == null || line.counted_at == null).length;
   if (missing > 0) {
     throw new Error(`Popis nije potpun: unesite količinu za svih ${missing} preostalih stavki pre knjiženja.`);
   }
   for (const line of lines) {
-    const diff = q(line.counted_qty!) - q(line.expected_qty);
-    let value: string | null = null;
+    const current = await sql.query<{ on_hand: string }>(
+      `select on_hand::text from articles where id=$1 and org_id=$2 for update`,
+      [line.article_id, actor.orgId],
+    );
+    if (!current[0]) throw new Error("Artikal iz popisa ne postoji u ovoj firmi.");
+    const movements = await sql.query<{ during_count: string; after_count: string }>(
+      `select
+         coalesce(sum(qty) filter (
+           where occurred_at > $2::timestamptz and occurred_at <= $3::timestamptz
+         ), 0)::text as during_count,
+         coalesce(sum(qty) filter (
+           where occurred_at > $3::timestamptz and occurred_at <= $4::timestamptz
+         ), 0)::text as after_count
+       from stock_moves where article_id=$1`,
+      [line.article_id, header[0].started_at, line.counted_at, when.at],
+    );
+    const expectedAtCount = q(line.expected_qty) + q(movements[0]?.during_count ?? "0");
+    const diff = q(line.counted_qty!) - expectedAtCount;
+    const targetNow = q(line.counted_qty!) + q(movements[0]?.after_count ?? "0");
+    const adjustment = targetNow - q(current[0].on_hand);
+    let value: string | null = "0.00";
     let complete = true;
-    if (diff !== 0n) {
+    if (adjustment !== 0n) {
       const moved = await applyMove(sql, {
         orgId: actor.orgId,
         articleId: line.article_id,
-        qtyDelta: diff,
+        qtyDelta: adjustment,
         inboundUnitCost: null,
         kind: "popis",
         refType: "popis",
@@ -906,7 +938,7 @@ export async function postCount(sql: Sql, actor: Actor, countId: string): Promis
         occurredAt: when.at,
         shiftId: null,
         userId: actor.userId,
-        note: "Popisna razlika u odnosu na presek, bez ponavljanja rashoda",
+        note: "Popisna razlika prilagođena kretanjima posle brojanja",
         demo: false,
       });
       value = moved.value;
