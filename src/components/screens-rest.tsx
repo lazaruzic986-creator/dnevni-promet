@@ -263,6 +263,7 @@ export function SalesPage() {
               return;
             }
             let posted = 0;
+            let duplicates = 0;
             const skipped: string[] = [];
             for (let recordIndex = 1; recordIndex < rows.length; recordIndex += 1) {
               const cells = rows[recordIndex];
@@ -277,19 +278,20 @@ export function SalesPage() {
               const product = products.data?.products.find((p) => (code && (p.code === code || p.pos_code === code)) || (name && p.name === name));
               if (!product) { skipped.push(`${label}: šifra nije povezana, red nije knjižen`); continue; }
               try {
-                await commit("postSale", {
+                const result = await commit("postSale", {
                   source: "csv",
                   occurredAt: date && time ? `${date}T${time}` : null,
                   tenderCash: cashPay ? amount : "0",
                   tenderCard: cardPay ? amount : "0",
                   idempotencyKey: csvSaleIdempotencyKey(fingerprint, recordIndex),
                   lines: [{ productId: product.id, name: product.name, qty: qtyCell, unitPrice: null, lineNet: amount }],
-                });
-                posted += 1;
+                }) as { duplicate?: boolean };
+                if (result.duplicate) duplicates += 1;
+                else posted += 1;
               } catch (error) { err(error); break; }
             }
             if (skipped.length) toast.message(skipped.slice(0, 4).join(" · "));
-            toast.success(`Knjiženo redova: ${posted}. Preskočeno: ${skipped.length}. Količina i iznos nisu dopunjeni. CSV nema kanal, posebna ambalaža nije uračunata.`);
+            toast.success(`Novo knjiženo: ${posted}. Već obrađeno: ${duplicates}. Preskočeno: ${skipped.length}. Količina i iznos nisu dopunjeni. CSV nema kanal, posebna ambalaža nije uračunata.`);
             refresh();
           }} />
         </label>
