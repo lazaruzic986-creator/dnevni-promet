@@ -20,6 +20,7 @@ test("zaokruživanje i poslovni dan", () => {
 test("glavni obračun ugostitelja", async () => {
   const pg = new PGlite();
   await pg.exec(readFileSync(new URL("../../../migrations/0002_hospitality.sql", import.meta.url), "utf8"));
+  await pg.exec(readFileSync(new URL("../../../migrations/0003_count_timing.sql", import.meta.url), "utf8"));
   const sql = {
     query: async <T>(text: string, params: unknown[] = []) => {
       const result = await pg.query<T>(text, params);

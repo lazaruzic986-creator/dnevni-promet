@@ -197,7 +197,13 @@ export async function runProof(sql: Sql): Promise<Check[]> {
     `select expected_qty::text from count_lines where count_id=$1 and article_id=$2`,
     [countId, cheese],
   );
-  await setCountQty(sql, actor, countId, cheese, "3600");
+  const countItems = await sql.query<{ article_id: string; expected_qty: string }>(
+    `select article_id, expected_qty::text from count_lines where count_id=$1`,
+    [countId],
+  );
+  for (const item of countItems) {
+    await setCountQty(sql, actor, countId, item.article_id, item.article_id === cheese ? "3600" : item.expected_qty);
+  }
   await postCount(sql, actor, countId);
   const countLine = await sql.query<{ diff_qty: string; value: string }>(
     `select diff_qty::text, value::text from count_lines where count_id=$1 and article_id=$2`,
@@ -294,9 +300,9 @@ export async function runProof(sql: Sql): Promise<Check[]> {
   const shift = await sql.query<{ id: string }>(`select id from shifts where org_id=$1 and status='otvorena'`, [actor.orgId]);
   const expected = await expectedCashOf(sql, shift[0].id);
   const closed = await closeShift(sql, actor, { counted: mStr(expected), note: "Tačno" });
-  const snap = await snapshot(sql, actor.orgId, "2026-04-01", "2026-09-30", false);
+  const snap = await snapshot(sql, actor.orgId, "2026-04-01", "2099-12-31", false);
   const revenueDirect = await sql.query<{ net: string }>(
-    `select coalesce(sum(net),0)::text as net from sales where org_id=$1 and status='proknjizen' and reconcile_only=false and business_date between '2026-04-01' and '2026-09-30'`,
+    `select coalesce(sum(net),0)::text as net from sales where org_id=$1 and status='proknjizen' and reconcile_only=false and business_date between '2026-04-01' and '2099-12-31'`,
     [actor.orgId],
   );
   push(

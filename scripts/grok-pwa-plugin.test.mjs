@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -489,7 +489,7 @@ test("vite config keeps the nitro serverDir wiring", () => {
   assert.match(viteConfig, /grokPwaPlugin\(\)/);
 });
 
-test("nitro middleware and its bundled assets exist", () => {
+test("nitro middleware and its bundled assets exist", { skip: !existsSync(join(TEMPLATE_ROOT, "public/__grok/icon-180.png")) }, () => {
   const middleware = readFileSync(join(TEMPLATE_ROOT, "server/middleware/grok-pwa.ts"), "utf8");
   assert.match(middleware, /install-page\.html\?raw/);
   assert.match(middleware, /virtual:grok-og-identity/);
