@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { formatRsd, m, mStr, q, c, valuePara } from "@/lib/h/money";
 import { commit, useBoot, useRead, useRefresh } from "./data";
+import { csvSaleIdempotencyKey, fingerprintCsv, parseSalesCsv } from "@/lib/h/sales-csv";
 import { GateNote } from "./shell";
 
 function err(e: unknown) {
@@ -252,11 +253,21 @@ export function SalesPage() {
           <input className="mt-2 block" type="file" accept=".csv,text/csv,.txt" onChange={async (e) => {
             const file = e.target.files?.[0]; if (!file) return;
             const text = await file.text();
-            const rows = text.split(/\r?\n/).slice(1).filter(Boolean);
+            let rows: string[][];
+            let fingerprint: string;
+            try {
+              rows = parseSalesCsv(text);
+              fingerprint = await fingerprintCsv(text);
+            } catch (error) {
+              err(error);
+              return;
+            }
             let posted = 0;
             const skipped: string[] = [];
-            for (const row of rows) {
-              const [date, time, code, name, qtyCell, amount, pay] = row.split(/[;,]/).map((cell) => cell.trim());
+            for (let recordIndex = 1; recordIndex < rows.length; recordIndex += 1) {
+              const cells = rows[recordIndex];
+              if (cells.every((cell) => cell === "")) continue;
+              const [date, time, code, name, qtyCell, amount, pay] = cells;
               const label = name || code || "red";
               if (!qtyCell || !amount || !pay) { skipped.push(`${label}: nema količine, iznosa ili načina plaćanja`); continue; }
               const payKey = pay.toLowerCase();
@@ -271,7 +282,7 @@ export function SalesPage() {
                   occurredAt: date && time ? `${date}T${time}` : null,
                   tenderCash: cashPay ? amount : "0",
                   tenderCard: cardPay ? amount : "0",
-                  idempotencyKey: `csv-${file.name}-${date}-${code}-${qtyCell}-${amount}`,
+                  idempotencyKey: csvSaleIdempotencyKey(fingerprint, recordIndex),
                   lines: [{ productId: product.id, name: product.name, qty: qtyCell, unitPrice: null, lineNet: amount }],
                 });
                 posted += 1;
